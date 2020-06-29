@@ -23,11 +23,8 @@ use bitcoin::network::constants::Network;
 use log::Level;
 use std::{net::SocketAddr, path::Path, str::FromStr, time::SystemTime};
 
-pub mod blockdownload;
-pub mod echo;
 pub mod spv;
-
-use spv::Constructor;
+use spv::Spv;
 
 pub fn run(
     network: Network,
@@ -41,8 +38,8 @@ pub fn run(
         Network::Testnet => Some(Path::new("data/testnet/client.db")),
         Network::Regtest => Some(Path::new("data/regtest/client.db")),
     };
-    let chain_db = Constructor::open_db(path, network, birth).unwrap();
-    let mut spv = Constructor::new(network, listeners, chain_db).unwrap();
+    let chain_db = Spv::open_db(path, network, birth).unwrap();
+    let mut spv = Spv::new(network, listeners, chain_db).unwrap();
     spv.run(network, peers, connections)
         .expect("can not start node");
 }
