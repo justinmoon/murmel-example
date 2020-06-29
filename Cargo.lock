@@ -328,6 +328,7 @@ name = "murmel-example"
 version = "0.1.0"
 dependencies = [
  "bitcoin",
+ "bitcoin_hashes",
  "futures-preview",
  "futures-timer",
  "log",

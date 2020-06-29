@@ -1,27 +1,15 @@
 use bitcoin::network::message::NetworkMessage;
 use log::info;
-use std::{collections::HashMap, sync::mpsc, thread, time::Duration};
+use std::{sync::mpsc, thread, time::Duration};
 
-use murmel::p2p::{P2PControlSender, PeerId, PeerMessage, PeerMessageReceiver, PeerMessageSender};
-use murmel::timeout::{ExpectedReply, SharedTimeout};
+use murmel::p2p::{P2PControlSender, PeerMessage, PeerMessageReceiver, PeerMessageSender};
 
-pub struct Echo {
-    p2p: P2PControlSender<NetworkMessage>,
-    timeout: SharedTimeout<NetworkMessage, ExpectedReply>,
-    asked: HashMap<PeerId, u64>,
-}
+pub struct Echo {}
 
 impl Echo {
-    pub fn new(
-        p2p: P2PControlSender<NetworkMessage>,
-        timeout: SharedTimeout<NetworkMessage, ExpectedReply>,
-    ) -> PeerMessageSender<NetworkMessage> {
+    pub fn new(p2p: P2PControlSender<NetworkMessage>) -> PeerMessageSender<NetworkMessage> {
         let (sender, receiver) = mpsc::sync_channel(p2p.back_pressure);
-        let mut ping = Echo {
-            p2p,
-            timeout,
-            asked: HashMap::new(),
-        };
+        let mut ping = Echo {};
 
         thread::Builder::new()
             .name("echo".to_string())

@@ -22,6 +22,7 @@
 use bitcoin::network::constants::Network;
 use bitcoin::network::message::NetworkMessage;
 use bitcoin::network::message::RawNetworkMessage;
+use bitcoin_hashes::sha256d;
 use futures::{
     executor::{ThreadPool, ThreadPoolBuilder},
     future,
@@ -49,6 +50,7 @@ use murmel::p2p::{BitcoinP2PConfig, P2PControl, PeerMessageSender, PeerSource, P
 use murmel::ping::Ping;
 use murmel::timeout::Timeout;
 
+use crate::blockdownload::BlockDownload;
 use crate::echo::Echo;
 
 const MAX_PROTOCOL_VERSION: u32 = 70001;
@@ -68,8 +70,7 @@ impl Constructor {
         _birth: u64,
     ) -> Result<SharedChainDB, Error> {
         let mut chaindb = if let Some(path) = path {
-            //ChainDB::new(path, network)?
-            ChainDB::mem(network)?
+            ChainDB::new(path, network)?
         } else {
             ChainDB::mem(network)?
         };
@@ -121,7 +122,20 @@ impl Constructor {
             lightning.clone(),
         ));
         dispatcher.add_listener(Ping::new(p2p_control.clone(), timeout.clone()));
-        dispatcher.add_listener(Echo::new(p2p_control.clone(), timeout.clone()));
+        dispatcher.add_listener(Echo::new(p2p_control.clone()));
+
+        // FIXME
+        let processed_block: Option<sha256d::Hash> = None;
+        let birth = 0;
+
+        dispatcher.add_listener(BlockDownload::new(
+            chaindb.clone(),
+            p2p_control.clone(),
+            timeout.clone(),
+            lightning.clone(),
+            processed_block,
+            birth,
+        ));
 
         for addr in &listen {
             p2p_control.send(P2PControl::Bind(addr.clone()));
@@ -129,7 +143,7 @@ impl Constructor {
 
         Ok(Constructor {
             p2p,
-            downstream: lightning,
+            downstream: lightning.clone(),
         })
     }
 
