@@ -1,0 +1,14 @@
+[package]
+name = "murmel-example"
+version = "0.1.0"
+authors = ["Justin Moon <mail@justinmoon.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+murmel = { git = "https://github.com/rust-bitcoin/murmel.git" }
+bitcoin = { version= "0.21", features=["use-serde"]}
+log = "0.4"
+rand = "0.7"
+simple_logger = "0.5.0"
