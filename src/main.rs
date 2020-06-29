@@ -21,7 +21,7 @@ extern crate simple_logger;
 
 use bitcoin::network::constants::Network;
 use log::Level;
-use std::{net::SocketAddr, path::Path, time::SystemTime};
+use std::{net::SocketAddr, path::Path, str::FromStr, time::SystemTime};
 
 pub mod blockdownload;
 pub mod echo;
@@ -33,13 +33,13 @@ pub fn run(
     network: Network,
     connections: usize,
     birth: u64, //db_file: Option<PathBuf>,
+    peers: Vec<SocketAddr>,
 ) {
-    let peers: Vec<SocketAddr> = vec![];
     let listeners: Vec<SocketAddr> = vec![];
     let path = match network {
-        Network::Bitcoin => Some(Path::new("mainnet/client.db")),
-        Network::Testnet => Some(Path::new("testnet/client.db")),
-        Network::Regtest => Some(Path::new("regtest/client.db")),
+        Network::Bitcoin => Some(Path::new("data/mainnet/client.db")),
+        Network::Testnet => Some(Path::new("data/testnet/client.db")),
+        Network::Regtest => Some(Path::new("data/regtest/client.db")),
     };
     let chain_db = Constructor::open_db(path, network, birth).unwrap();
     let mut spv = Constructor::new(network, listeners, chain_db).unwrap();
@@ -47,13 +47,27 @@ pub fn run(
         .expect("can not start node");
 }
 
-fn main() {
+fn testnet() {
     simple_logger::init_with_level(Level::Debug).unwrap();
     let network = Network::Testnet;
     let connections = 4;
+    let peers: Vec<SocketAddr> = vec![];
     let birth = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    run(network, connections, birth);
+    run(network, connections, birth, peers);
+}
+
+fn regtest() {
+    simple_logger::init_with_level(Level::Info).unwrap();
+    let network = Network::Regtest;
+    let connections = 4;
+    let peers: Vec<SocketAddr> = vec![SocketAddr::from_str("127.0.0.1:18444").unwrap()];
+    let birth = 0;
+    run(network, connections, birth, peers);
+}
+
+fn main() {
+    regtest();
 }

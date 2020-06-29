@@ -19,10 +19,11 @@
 //! Assembles modules of this library to a complete service
 //!
 
+use bitcoin::blockdata::transaction::TxOut;
 use bitcoin::network::constants::Network;
-use bitcoin::network::message::NetworkMessage;
-use bitcoin::network::message::RawNetworkMessage;
-use bitcoin_hashes::sha256d;
+use bitcoin::network::message::{NetworkMessage, RawNetworkMessage};
+use bitcoin::{Address, BitcoinHash, Block, BlockHeader, OutPoint, Script};
+use bitcoin_hashes::{hex::FromHex, sha256d};
 use futures::{
     executor::{ThreadPool, ThreadPoolBuilder},
     future,
@@ -30,11 +31,12 @@ use futures::{
     Future, FutureExt, Poll as Async, StreamExt,
 };
 use futures_timer::Interval;
+use log::info;
 use rand::{thread_rng, RngCore};
 use std::pin::Pin;
 use std::time::Duration;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::SocketAddr,
     path::Path,
     sync::{atomic::AtomicUsize, mpsc, Arc, Mutex, RwLock},
@@ -43,7 +45,7 @@ use std::{
 use murmel::chaindb::{ChainDB, SharedChainDB};
 use murmel::dispatcher::Dispatcher;
 use murmel::dns::dns_seed;
-use murmel::downstream::{DownStreamDummy, SharedDownstream};
+use murmel::downstream::{DownStreamDummy, Downstream, SharedDownstream};
 use murmel::error::Error;
 use murmel::headerdownload::HeaderDownload;
 use murmel::p2p::{BitcoinP2PConfig, P2PControl, PeerMessageSender, PeerSource, P2P};
@@ -54,6 +56,65 @@ use crate::blockdownload::BlockDownload;
 use crate::echo::Echo;
 
 const MAX_PROTOCOL_VERSION: u32 = 70001;
+
+pub struct Tracker {
+    script_pubkey: Script,
+    utxos: HashMap<OutPoint, TxOut>,
+}
+
+impl Downstream for Tracker {
+    fn block_connected(&mut self, block: &Block, _height: u32) {
+        let initial_balance = self.balance();
+        for tx in block.txdata.iter() {
+            for (index, vout) in tx.output.iter().enumerate() {
+                let is_mine = self.script_pubkey == vout.script_pubkey;
+                let outpoint = OutPoint::new(tx.txid(), index as u32);
+                if is_mine {
+                    info!("receive: {}", outpoint);
+                    self.utxos.insert(outpoint, vout.clone());
+                }
+            }
+            for input in tx.input.iter() {
+                if self.utxos.contains_key(&input.previous_output) {
+                    info!("spend: {}", &input.previous_output);
+                    self.utxos.remove(&input.previous_output).unwrap();
+                }
+            }
+        }
+        let final_balance = self.balance();
+        if initial_balance != final_balance {
+            info!("balance change: {} -> {}", initial_balance, final_balance);
+        }
+    }
+
+    fn header_connected(&mut self, header: &BlockHeader, _height: u32) {
+        println!("\n\n\nHEADER: {:?}\n\n\n", header.bitcoin_hash());
+    }
+
+    fn block_disconnected(&mut self, header: &BlockHeader) {
+        // TODO: revert block_connected
+        println!("\n\n\nDISCONNECT: {:?}\n\n\n", header.bitcoin_hash());
+    }
+}
+
+impl Tracker {
+    pub fn new() -> Self {
+        let script_pubkey = Script::from(
+            Vec::<u8>::from_hex("76a91402306a7c23f3e8010de41e9e591348bb83f11daa88ac").unwrap(),
+        );
+        let address = Address::from_script(&script_pubkey, Network::Regtest).unwrap();
+        println!("address: {}", address);
+        let utxos = HashMap::new();
+        Self {
+            script_pubkey,
+            utxos,
+        }
+    }
+
+    fn balance(&self) -> u64 {
+        self.utxos.values().fold(0u64, |sum, val| sum + val.value)
+    }
+}
 
 /// The complete stack
 pub struct Constructor {
@@ -128,11 +189,13 @@ impl Constructor {
         let processed_block: Option<sha256d::Hash> = None;
         let birth = 0;
 
+        let downstream = Arc::new(Mutex::new(Tracker::new()));
+
         dispatcher.add_listener(BlockDownload::new(
             chaindb.clone(),
             p2p_control.clone(),
             timeout.clone(),
-            lightning.clone(),
+            downstream.clone(),
             processed_block,
             birth,
         ));
